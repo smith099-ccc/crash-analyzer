@@ -1,0 +1,25 @@
+name: Build Crash Analyzer APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Android APK
+        uses: ArtemKha/action-buildozer@v1
+        with:
+          command: android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-analyzer-debug-apk
+          path: bin/*.apk
+          if-no-files-found: error
