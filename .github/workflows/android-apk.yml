@@ -33,12 +33,39 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install buildozer cython==0.29.34
 
-      - name: Accept Android SDK licenses
+      - name: Prepare Android SDK for Buildozer
         run: |
-          mkdir -p "$HOME/.buildozer/android/platform/android-sdk"
-          yes | sdkmanager --licenses || true
+          SDK_ROOT="$HOME/.buildozer/android/platform/android-sdk"
+          mkdir -p "$SDK_ROOT/tools/bin"
+
+          SDKMANAGER=""
+          for candidate in             "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager"             "/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then
+              SDKMANAGER="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find /usr/local/lib/android /opt -type f -path '*/cmdline-tools/*/bin/sdkmanager' -print -quit 2>/dev/null || true)"
+          fi
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "Android sdkmanager was not found on the runner"
+            exit 1
+          fi
+
+          ln -sf "$SDKMANAGER" "$SDK_ROOT/tools/bin/sdkmanager"
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses || true
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build Android APK
+        env:
+          ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+          ANDROID_SDK_ROOT: /home/runner/.buildozer/android/platform/android-sdk
         run: |
           yes | buildozer android debug
 
