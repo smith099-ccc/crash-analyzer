@@ -52,11 +52,21 @@ jobs:
 
           echo "Repairing p4a source and temporary build virtualenvs"
 
-          # The failed bootstrap can leave a partially upgraded pip inside
-          # p4a's temporary venv. Remove those venvs so p4a recreates them
-          # cleanly on the final build.
-          find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
-          find .buildozer/android/platform -type d -path "*/build/hostpython/venv" -prune -exec rm -rf {} + 2>/dev/null || true
+          # The failed bootstrap can leave a mixed/broken pip installation
+          # inside p4a's temporary build venv. Repair the existing venvs
+          # instead of deleting them, because the final build reuses them.
+          for VENV in $(find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null); do
+            if [ -x "$VENV/bin/python" ]; then
+              "$VENV/bin/python" -m ensurepip --upgrade || true
+              "$VENV/bin/python" -m pip install --force-reinstall "pip==23.2.1" "setuptools<70" wheel || true
+            fi
+          done
+          for VENV in $(find .buildozer/android/platform -type d -path "*/build/hostpython/venv" -print 2>/dev/null); do
+            if [ -x "$VENV/bin/python" ]; then
+              "$VENV/bin/python" -m ensurepip --upgrade || true
+              "$VENV/bin/python" -m pip install --force-reinstall "pip==23.2.1" "setuptools<70" wheel || true
+            fi
+          done
 
           # Keep the Python 3 recipe aligned with the Android host Python.
           grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
