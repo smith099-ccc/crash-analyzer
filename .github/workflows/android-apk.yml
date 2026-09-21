@@ -30,13 +30,33 @@ jobs:
           SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-      - name: Build Android APK
+      - name: Bootstrap and patch Python-for-Android
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           ANDROIDSDK: /usr/local/lib/android/sdk
         run: |
           rm -rf .buildozer
+          set +e
+          yes | buildozer android debug
+          FIRST_STATUS=$?
+          set -e
+          echo "Initial Buildozer bootstrap status: $FIRST_STATUS"
+          P4A=".buildozer/android/platform/python-for-android"
+          if [ ! -d "$P4A" ]; then
+            echo "Buildozer did not create python-for-android at $P4A"
+            find .buildozer/android/platform -maxdepth 3 -type d -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "Patching p4a recipes under $P4A"
+          grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
+          grep -RIn 'version = .*3\.1[14]' "$P4A/pythonforandroid/recipes/hostpython3" "$P4A/pythonforandroid/recipes/python3" 2>/dev/null || true
+      - name: Build Android APK
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          ANDROIDSDK: /usr/local/lib/android/sdk
+        run: |
           yes | buildozer android debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
