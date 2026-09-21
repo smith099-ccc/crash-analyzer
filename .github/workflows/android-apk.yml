@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
           python -m pip install --upgrade pip
-          python -m pip install buildozer cython==0.29.34 python-for-android==2024.1.21
+          python -m pip install buildozer cython==0.29.34
       - name: Prepare Android SDK
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
@@ -30,24 +30,14 @@ jobs:
           SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-      - name: Pin p4a and host Python to 3.11
+      - name: Build Android APK
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
           ANDROIDSDK: /usr/local/lib/android/sdk
         run: |
           rm -rf .buildozer
-          mkdir -p .buildozer/android/platform
-          git clone --depth 1 --branch 2024.1.21 https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
-          sed -i 's/3\.14\.2/3.11.9/g' .buildozer/android/platform/python-for-android/pythonforandroid/recipes/python3/__init__.py
-          sed -i 's/3\.14\.2/3.11.9/g' .buildozer/android/platform/python-for-android/pythonforandroid/recipes/hostpython3/__init__.py 2>/dev/null || true
-          python -m pip install --force-reinstall "sh<2,>=1.10" "python-for-android==2024.1.21"
-      - name: Build Android APK
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROIDSDK: /usr/local/lib/android/sdk
-        run: yes | buildozer android debug
+          yes | buildozer android debug
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
