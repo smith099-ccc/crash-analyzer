@@ -30,7 +30,7 @@ jobs:
           SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-      - name: Bootstrap and patch Python-for-Android
+      - name: Bootstrap and repair Python-for-Android
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -42,21 +42,35 @@ jobs:
           FIRST_STATUS=$?
           set -e
           echo "Initial Buildozer bootstrap status: $FIRST_STATUS"
+
           P4A=".buildozer/android/platform/python-for-android"
           if [ ! -d "$P4A" ]; then
             echo "Buildozer did not create python-for-android at $P4A"
             find .buildozer/android/platform -maxdepth 3 -type d -print 2>/dev/null || true
             exit 1
           fi
-          echo "Patching p4a recipes under $P4A"
-          # Prevent stale/mixed pip state in p4a's temporary build venv.
-          grep -RIl -- "-m', 'venv', 'venv'" "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i "s/'-m', 'venv', 'venv'/'-m', 'venv', '--clear', 'venv'/g"
-          grep -RIl -- "-m venv venv" "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/-m venv venv/-m venv --clear venv/g'
+
+          echo "Repairing p4a source and temporary build virtualenvs"
+
+          # The failed bootstrap can leave a partially upgraded pip inside
+          # p4a's temporary venv. Remove those venvs so p4a recreates them
+          # cleanly on the final build.
+          find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
+          find .buildozer/android/platform -type d -path "*/build/hostpython/venv" -prune -exec rm -rf {} + 2>/dev/null || true
+
+          # Keep the Python 3 recipe aligned with the Android host Python.
           grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
+
+          # Older p4a/buildozer combinations work more reliably with pip 23.2.1.
           grep -RIl '24\.3\.1' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/24\.3\.1/23.2.1/g'
           grep -RIl 'pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install -U pip/true/g'
           grep -RIl 'pip install --force-reinstall --no-cache-dir pip==24\.3\.1' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install --force-reinstall --no-cache-dir pip==24\.3\.1/true/g'
+
+          echo "Remaining temporary venvs:"
+          find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null || true
+          echo "Python recipe versions:"
           grep -RIn 'version = .*3\.1[14]' "$P4A/pythonforandroid/recipes/hostpython3" "$P4A/pythonforandroid/recipes/python3" 2>/dev/null || true
+
       - name: Build Android APK
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
@@ -64,6 +78,7 @@ jobs:
           ANDROIDSDK: /usr/local/lib/android/sdk
         run: |
           yes | buildozer android debug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
