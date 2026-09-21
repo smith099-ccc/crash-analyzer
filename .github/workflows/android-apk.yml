@@ -50,6 +50,7 @@ jobs:
           fi
           echo "Patching p4a recipes under $P4A"
           grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
+          grep -RIl "pip install -U pip" "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install -U pip/pip install pip==24.3.1/g'
           grep -RIn 'version = .*3\.1[14]' "$P4A/pythonforandroid/recipes/hostpython3" "$P4A/pythonforandroid/recipes/python3" 2>/dev/null || true
       - name: Build Android APK
         env:
