@@ -65,6 +65,7 @@ jobs:
           grep -RIl '24\.3\.1' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/24\.3\.1/23.2.1/g'
           grep -RIl 'pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install -U pip/true/g'
           grep -RIl 'pip install --force-reinstall --no-cache-dir pip==24\.3\.1' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install --force-reinstall --no-cache-dir pip==24\.3\.1/true/g'
+          grep -RIl 'venv/bin/pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/pip install Cython#venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install Cython#g'
 
           echo "Remaining temporary venvs:"
           find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null || true
