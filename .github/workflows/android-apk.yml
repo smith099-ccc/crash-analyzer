@@ -54,6 +54,12 @@ jobs:
           grep -RIl 'pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install -U pip/true/g'
           grep -RIl 'pip install --force-reinstall --no-cache-dir pip==24\.3\.1' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's/pip install --force-reinstall --no-cache-dir pip==24\.3\.1/true/g'
           grep -RIn 'version = .*3\.1[14]' "$P4A/pythonforandroid/recipes/hostpython3" "$P4A/pythonforandroid/recipes/python3" 2>/dev/null || true
+          echo "Repairing p4a build virtualenv pip before final build"
+          find .buildozer/android/platform -path '*/build/venv/bin/python' -type f -print0 2>/dev/null | while IFS= read -r -d '' VPY; do
+            "$VPY" -m ensurepip --upgrade || true
+            "$VPY" -m pip install --no-cache-dir --force-reinstall 'pip==23.2.1' || true
+            "$VPY" -m pip --version || true
+          done
       - name: Build Android APK
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
