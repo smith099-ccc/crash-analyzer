@@ -89,6 +89,11 @@ jobs:
           # Fallback for older p4a source variants.
           grep -RIl 'venv/bin/pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/pip install Cython#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \&\& venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \&\& venv/bin/python -m pip install Cython#g'
 
+          # Final guard against p4a upgrading pip to an incompatible latest release.
+          grep -RIl 'pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | while read -r FILE; do
+            sed -i 's/pip install -U pip/pip install --force-reinstall pip==23.2.1/g' "$FILE"
+          done
+
           echo "Remaining temporary venvs:"
           find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null || true
           echo "Python recipe versions:"
