@@ -76,23 +76,29 @@ jobs:
 
           grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
 
-          # The current p4a develop source can still invoke "pip install -U pip" directly.
-          # Replace that call too, because a mixed pip installation can fail before our venv repair runs.
-          grep -RIl 'source venv/bin/activate && pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | while read -r FILE; do
-            sed -i 's#source venv/bin/activate && pip install -U pip#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \\&\\& venv/bin/python -m ensurepip --upgrade \\&\\& venv/bin/python -m pip install --force-reinstall pip==23.2.1#g' "$FILE"
-          done
+          # p4a creates a temporary build venv during the recipe-install stage.
+          # Recreate it with --clear so a failed/interrupted run cannot leave a mixed pip installation.
+          BUILD_PY="$P4A/pythonforandroid/build.py"
+          if [ -f "$BUILD_PY" ]; then
+            python - "$BUILD_PY" <<'PY'
+import pathlib, sys
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+old = "shprint(host_python, '-m', 'venv', 'venv')"
+new = "shprint(host_python, '-m', 'venv', '--clear', 'venv')"
+if old in s:
+    p.write_text(s.replace(old, new))
+    print("Patched p4a build.py: temporary venv now uses --clear")
+else:
+    print("WARNING: expected p4a venv creation line was not found")
+PY
+          fi
 
-          # p4a's generated build venv can contain a mixed/broken pip installation.
-          # Clean pip completely before bootstrapping it, then pin pip 23.2.1.
-          grep -RIl 'venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install --force-reinstall pip==23\.2\.1 && venv/bin/python -m pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install --force-reinstall pip==23.2.1 && venv/bin/python -m pip install Cython#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \\&\\& venv/bin/python -m ensurepip --upgrade \\&\\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \\&\\& venv/bin/python -m pip install Cython#g'
+          # Remove any stale generated build venv before the final build.
+          find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
 
-          # Fallback for older p4a source variants.
-          grep -RIl 'venv/bin/pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/pip install Cython#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \&\& venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \&\& venv/bin/python -m pip install Cython#g'
-
-          # Final guard against p4a upgrading pip to an incompatible latest release.
-          grep -RIl 'pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | while read -r FILE; do
-            sed -i 's/pip install -U pip/pip install --force-reinstall pip==23.2.1/g' "$FILE"
-          done
+          echo "Verifying p4a build.py venv handling:"
+          grep -n -A3 -B2 "venv.*clear" "$BUILD_PY" 2>/dev/null || true
 
           echo "Remaining temporary venvs:"
           find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null || true
