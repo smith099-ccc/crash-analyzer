@@ -1,4 +1,5 @@
 from kivy.app import App
+from kivy.clock import Clock
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -43,7 +44,6 @@ class CrashAnalyzerUI(BoxLayout):
 
         self.feed = None
         self.render()
-        Clock = __import__("kivy.clock", fromlist=["Clock"]).Clock
         Clock.schedule_once(lambda *_: self.start_live_feed(), 0.5)
 
     def start_live_feed(self):
