@@ -44,6 +44,15 @@ jobs:
           echo "Initial Buildozer bootstrap status: $FIRST_STATUS"
 
           P4A=".buildozer/android/platform/python-for-android"
+          # Use the current p4a develop fixes for the pip/venv corruption affecting
+          # recent GitHub Actions runners. The upstream Buildozer docs recommend
+          # the develop branch for current Android builds.
+          if [ -d "$P4A" ]; then
+            cd "$P4A"
+            git fetch --depth=1 origin develop
+            git checkout -B develop FETCH_HEAD
+            cd -
+          fi
           if [ ! -d "$P4A" ]; then
             echo "Buildozer did not create python-for-android at $P4A"
             find .buildozer/android/platform -maxdepth 3 -type d -print 2>/dev/null || true
