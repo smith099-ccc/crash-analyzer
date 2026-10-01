@@ -74,7 +74,7 @@ jobs:
           # ensurepip on this runner currently seeds pip 26.x, which is incompatible with
           # the p4a environment, so immediately downgrade pip before installing Cython.
           grep -RIl 'venv/bin/pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/pip install Cython#venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \&\& venv/bin/python -m pip install Cython#g'
-          grep -RIl 'venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install Cython#venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \&\& venv/bin/python -m pip install Cython#g'
+          grep -RIl 'venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install Cython#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \&\& venv/bin/python -m ensurepip --upgrade \&\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \&\& venv/bin/python -m pip install Cython#g'
 
           echo "Remaining temporary venvs:"
           find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null || true
