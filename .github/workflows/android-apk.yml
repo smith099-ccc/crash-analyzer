@@ -80,19 +80,9 @@ jobs:
           # Recreate it with --clear so a failed/interrupted run cannot leave a mixed pip installation.
           BUILD_PY="$P4A/pythonforandroid/build.py"
           if [ -f "$BUILD_PY" ]; then
-            python - "$BUILD_PY" <<'PY'
-import pathlib, sys
-p = pathlib.Path(sys.argv[1])
-s = p.read_text()
-old = "shprint(host_python, '-m', 'venv', 'venv')"
-new = "shprint(host_python, '-m', 'venv', '--clear', 'venv')"
-if old in s:
-    p.write_text(s.replace(old, new))
-    print("Patched p4a build.py: temporary venv now uses --clear")
-else:
-    print("WARNING: expected p4a venv creation line was not found")
-PY
-          fi
+            python -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); s=p.read_text(); old="shprint(host_python, \'-m\', \'venv\', \'venv\')"; new="shprint(host_python, \'-m\', \'venv\', \'--clear\', \'venv\')"; p.write_text(s.replace(old,new)) if old in s else None' "$BUILD_PY"
+            echo "Patched p4a build.py to recreate its temporary venv with --clear"
+          fi          fi
 
           # Remove any stale generated build venv before the final build.
           find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
