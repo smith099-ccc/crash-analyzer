@@ -76,6 +76,12 @@ jobs:
 
           grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
 
+          # The current p4a develop source can still invoke "pip install -U pip" directly.
+          # Replace that call too, because a mixed pip installation can fail before our venv repair runs.
+          grep -RIl 'source venv/bin/activate && pip install -U pip' "$P4A/pythonforandroid" 2>/dev/null | while read -r FILE; do
+            sed -i 's#source venv/bin/activate && pip install -U pip#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \\&\\& venv/bin/python -m ensurepip --upgrade \\&\\& venv/bin/python -m pip install --force-reinstall pip==23.2.1#g' "$FILE"
+          done
+
           # p4a's generated build venv can contain a mixed/broken pip installation.
           # Clean pip completely before bootstrapping it, then pin pip 23.2.1.
           grep -RIl 'venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install --force-reinstall pip==23\.2\.1 && venv/bin/python -m pip install Cython' "$P4A/pythonforandroid" 2>/dev/null | xargs -r sed -i 's#venv/bin/python -m ensurepip --upgrade && venv/bin/python -m pip install --force-reinstall pip==23.2.1 && venv/bin/python -m pip install Cython#rm -rf venv/lib/python*/site-packages/pip venv/lib/python*/site-packages/pip-* \\&\\& venv/bin/python -m ensurepip --upgrade \\&\\& venv/bin/python -m pip install --force-reinstall pip==23.2.1 \\&\\& venv/bin/python -m pip install Cython#g'
