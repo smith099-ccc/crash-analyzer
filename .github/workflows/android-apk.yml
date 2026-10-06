@@ -1,26 +1,30 @@
 name: Build Crash Analyzer APK
 
 on:
-  workflow_dispatch:
   push:
-    branches: ["main"]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v5
+      - name: Set up Java
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: actions/setup-python@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git zip unzip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
@@ -31,11 +35,11 @@ jobs:
         run: |
           export ANDROID_HOME=/usr/local/lib/android/sdk
           export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Bootstrap and repair Python-for-Android
+      - name: Bootstrap and repair p4a
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -46,78 +50,25 @@ jobs:
           yes | buildozer android debug
           FIRST_STATUS=$?
           set -e
-          echo "Initial Buildozer bootstrap status: $FIRST_STATUS"
+          echo "Initial bootstrap status: $FIRST_STATUS"
 
           P4A=".buildozer/android/platform/python-for-android"
+          test -d "$P4A"
 
-          if [ -d "$P4A" ]; then
-            cd "$P4A"
-            git fetch --depth=1 origin develop
-            git checkout -B develop FETCH_HEAD
-            cd -
-          fi
+          cd "$P4A"
+          git fetch --depth=1 origin develop
+          git checkout -B develop FETCH_HEAD
+          cd -
 
-          if [ ! -d "$P4A" ]; then
-            echo "Buildozer did not create python-for-android at $P4A"
-            find .buildozer/android/platform -maxdepth 3 -type d -print 2>/dev/null || true
-            exit 1
-          fi
-
-          echo "Repairing p4a source and temporary build virtualenvs"
-
-          for VENV in $(find .buildozer/android/platform -type d -path "*/build/venv" -print 2>/dev/null); do
-            if [ -x "$VENV/bin/python" ]; then
-              "$VENV/bin/python" -m ensurepip --upgrade || true
-              "$VENV/bin/python" -m pip install --force-reinstall "pip==23.2.1" "setuptools<70" wheel || true
-            fi
-          done
-
-          for VENV in $(find .buildozer/android/platform -type d -path "*/build/hostpython/venv" -print 2>/dev/null); do
-            if [ -x "$VENV/bin/python" ]; then
-              "$VENV/bin/python" -m ensurepip --upgrade || true
-              "$VENV/bin/python" -m pip install --force-reinstall "pip==23.2.1" "setuptools<70" wheel || true
-            fi
-          done
-
-          grep -RIl '3\.14\.2' "$P4A/pythonforandroid/recipes" 2>/dev/null | xargs -r sed -i 's/3\.14\.2/3.11.9/g'
-
-          # p4a creates a fresh temporary venv during recipe installation.
-          # Its normal "pip install -U pip" can leave a mixed pip installation
-          # on current runners. Replace that upgrade with ensurepip followed by
-          # a known-good pip version.
           BUILD_PY="$P4A/pythonforandroid/build.py"
           if [ -f "$BUILD_PY" ]; then
-            python - "$BUILD_PY" <<'PY'
-import pathlib
-import sys
-
-p = pathlib.Path(sys.argv[1])
-s = p.read_text()
-
-old = "source venv/bin/activate && pip install -U pip"
-new = "source venv/bin/activate && python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"
-
-if old in s:
-    s = s.replace(old, new)
-    p.write_text(s)
-    print("Patched p4a build.py pip bootstrap command.")
-else:
-    print("Target pip bootstrap command was not found; checking for related commands.")
-    if "pip install -U pip" in s:
-        s = s.replace("pip install -U pip", "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1")
-        p.write_text(s)
-        print("Patched generic p4a pip upgrade command.")
-PY
+            sed -i 's/pip install -U pip/python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1/g' "$BUILD_PY"
+            sed -i 's/3\.14\.2/3.11.9/g' "$P4A/pythonforandroid/recipes/hostpython3/recipe.py" 2>/dev/null || true
+            sed -i 's/3\.14\.2/3.11.9/g' "$P4A/pythonforandroid/recipes/python3/recipe.py" 2>/dev/null || true
           fi
 
-          # Remove stale generated venvs so the final build starts clean.
           find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
-
-          echo "Verifying p4a pip handling:"
-          grep -n -A2 -B2 "ensurepip.*pip==23.2.1" "$BUILD_PY" 2>/dev/null || true
-
-          echo "Python recipe versions:"
-          grep -RIn 'version = .*3\.1[14]' "$P4A/pythonforandroid/recipes/hostpython3" "$P4A/pythonforandroid/recipes/python3" 2>/dev/null || true
+          echo "p4a repair complete"
 
       - name: Build Android APK
         env:
