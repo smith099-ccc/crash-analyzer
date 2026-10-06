@@ -18,3 +18,4 @@ android.copy_libs = 1
 [buildozer]
 log_level = 2
 warn_on_root = 1
+p4a.branch = develop
