@@ -2,8 +2,7 @@ name: Build Crash Analyzer APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -53,7 +52,10 @@ jobs:
           echo "Initial bootstrap status: $FIRST_STATUS"
 
           P4A=".buildozer/android/platform/python-for-android"
-          test -d "$P4A"
+          if [ ! -d "$P4A" ]; then
+            echo "python-for-android directory was not created"
+            exit 1
+          fi
 
           cd "$P4A"
           git fetch --depth=1 origin develop
@@ -62,12 +64,53 @@ jobs:
 
           BUILD_PY="$P4A/pythonforandroid/build.py"
           if [ -f "$BUILD_PY" ]; then
-            sed -i 's/pip install -U pip/python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1/g' "$BUILD_PY"
-            sed -i 's/3\.14\.2/3.11.9/g' "$P4A/pythonforandroid/recipes/hostpython3/recipe.py" 2>/dev/null || true
-            sed -i 's/3\.14\.2/3.11.9/g' "$P4A/pythonforandroid/recipes/python3/recipe.py" 2>/dev/null || true
+            python - "$BUILD_PY" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+text = path.read_text()
+
+# Keep the replacement inside the existing Python string literal. Do not
+# inject shell syntax into the Python source itself.
+replacements = [
+    ("pip install -U pip",
+     "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
+    ("pip install --upgrade pip",
+     "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
+]
+
+changed = False
+for old, new in replacements:
+    if old in text:
+        text = text.replace(old, new)
+        changed = True
+
+if changed:
+    path.write_text(text)
+    print("Patched p4a build.py pip bootstrap safely.")
+else:
+    print("No p4a pip-upgrade command matched.")
+
+# Patch only the known incompatible Python 3.14.2 recipe pins if present.
+for root in [
+    path.parent.parent / "recipes" / "hostpython3",
+    path.parent.parent / "recipes" / "python3",
+]:
+    if root.exists():
+        for recipe in root.rglob("*.py"):
+            s = recipe.read_text()
+            if "3.14.2" in s:
+                recipe.write_text(s.replace("3.14.2", "3.11.9"))
+                print("Patched Python recipe:", recipe)
+PY
           fi
 
+          # The failed bootstrap may have left a half-installed venv.
+          # Delete it so the next Buildozer invocation creates it cleanly
+          # using the patched p4a bootstrap command.
           find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
+
           echo "p4a repair complete"
 
       - name: Build Android APK
