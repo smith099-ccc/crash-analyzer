@@ -5,14 +5,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -23,103 +27,44 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build dependencies
+      - name: Install Android build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y git zip unzip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev
+          sudo apt-get install -y             git zip unzip autoconf automake libtool pkg-config             zlib1g-dev libncurses5-dev libncursesw5-dev             cmake libffi-dev libssl-dev libltdl-dev             build-essential
+
+      - name: Install Buildozer and Python-for-Android dependencies
+        run: |
           python -m pip install --upgrade pip
-          python -m pip install buildozer cython==0.29.34
+          python -m pip install git+https://github.com/kivy/buildozer.git
+          python -m pip install legacy-cgi setuptools cython==0.29.34
 
-      - name: Prepare Android SDK
+      - name: Validate project
         run: |
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export ANDROID_SDK_ROOT=/usr/local/lib/android/sdk
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Bootstrap and repair p4a
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROIDSDK: /usr/local/lib/android/sdk
-        run: |
-          rm -rf .buildozer
-          set +e
-          yes | buildozer android debug
-          FIRST_STATUS=$?
-          set -e
-          echo "Initial bootstrap status: $FIRST_STATUS"
-
-          P4A=".buildozer/android/platform/python-for-android"
-          if [ ! -d "$P4A" ]; then
-            echo "python-for-android directory was not created"
-            exit 1
-          fi
-
-          cd "$P4A"
-          git fetch --depth=1 origin develop
-          git checkout -B develop FETCH_HEAD
-          cd -
-
-          BUILD_PY="$P4A/pythonforandroid/build.py"
-          if [ -f "$BUILD_PY" ]; then
-            python - "$BUILD_PY" <<'PY'
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-text = path.read_text()
-
-# Keep the replacement inside the existing Python string literal. Do not
-# inject shell syntax into the Python source itself.
-replacements = [
-    ("pip install -U pip",
-     "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
-    ("pip install --upgrade pip",
-     "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
-]
-
-changed = False
-for old, new in replacements:
-    if old in text:
-        text = text.replace(old, new)
-        changed = True
-
-if changed:
-    path.write_text(text)
-    print("Patched p4a build.py pip bootstrap safely.")
-else:
-    print("No p4a pip-upgrade command matched.")
-
-# Patch only the known incompatible Python 3.14.2 recipe pins if present.
-for root in [
-    path.parent.parent / "recipes" / "hostpython3",
-    path.parent.parent / "recipes" / "python3",
-]:
-    if root.exists():
-        for recipe in root.rglob("*.py"):
-            s = recipe.read_text()
-            if "3.14.2" in s:
-                recipe.write_text(s.replace("3.14.2", "3.11.9"))
-                print("Patched Python recipe:", recipe)
-PY
-          fi
-
-          # The failed bootstrap may have left a half-installed venv.
-          # Delete it so the next Buildozer invocation creates it cleanly
-          # using the patched p4a bootstrap command.
-          find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
-
-          echo "p4a repair complete"
+          python -m py_compile main.py crash_analyzer.py android_feed.py run_feed.py
+          python - <<'PY'
+          from crash_analyzer import RollingAnalyzer, parse_multipliers
+          values = parse_multipliers("1.35x 1.47x 2.10x 1.10x")
+          assert values == [1.35, 1.47, 2.10, 1.10]
+          a = RollingAnalyzer()
+          a.add_values(values)
+          result = a.analyze()
+          assert result.sample_size == 4
+          assert result.target_hits == 2
+          assert result.below_target == 1
+          assert result.above_target == 1
+          print("Analyzer validation passed.")
+          PY
 
       - name: Build Android APK
         env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROIDSDK: /usr/local/lib/android/sdk
+          BUILDOZER_ALLOW_ORG_TEST_DOMAIN: "1"
         run: |
           yes | buildozer android debug
+
+      - name: Verify APK
+        run: |
+          test -n "$(find bin -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          ls -lh bin/*.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
