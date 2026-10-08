@@ -56,11 +56,12 @@ class AndroidPublicFeed:
             self.poll_event = Clock.schedule_interval(self._poll, 2.0)
 
             owner = self
+
             class ValueCallback(PythonJavaClass):
                 __javainterfaces__ = ["android/webkit/ValueCallback"]
                 __javacontext__ = "app"
 
-                @java_method("(Ljava/lang/Object;)V")
+                @java_method("(Ljava/lang/String;)V")
                 def onReceiveValue(self, value):
                     owner._handle_js_result(value)
 
