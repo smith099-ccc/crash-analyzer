@@ -57,25 +57,39 @@ class CrashAnalyzerUI(BoxLayout):
     def set_status(self, text):
         self.status.text = text
 
+    @staticmethod
+    def _extract_new_values(snapshot, old):
+        snapshot = tuple(snapshot)
+        old = tuple(old)
+        if not old:
+            return list(snapshot[:40])
+
+        # TrackerSino's rendered list is normally newest-first. Find the
+        # smallest prefix that makes the remainder match the previous feed.
+        max_new = min(40, len(snapshot))
+        for count in range(1, max_new + 1):
+            remaining = snapshot[count:]
+            if len(remaining) >= max(1, min(len(old), 8)) and remaining == old[:len(remaining)]:
+                return list(snapshot[:count])
+
+        # Also support an oldest-first feed without duplicating the whole
+        # 40-round window on every poll.
+        if len(snapshot) >= len(old) and snapshot[-len(old):] == old:
+            return list(snapshot[:-len(old)][-40:])
+
+        # If the page changed/reset, re-seed from the latest 40 once.
+        if snapshot != old:
+            return list(snapshot[:40])
+        return []
+
     def on_feed_values(self, snapshot):
         if not snapshot:
             return
-        if not self.previous_feed:
-            new_values = list(reversed(snapshot[:40]))
-        else:
-            old = self.previous_feed
-            new_values = []
-            found = False
-            for start in range(max(0, len(snapshot) - len(old)) + 1):
-                if tuple(snapshot[start:start + len(old)]) == old:
-                    new_values = list(reversed(snapshot[:start]))
-                    found = True
-                    break
-            if not found and tuple(snapshot) != old:
-                new_values = list(reversed(snapshot[:40]))
+        new_values = self._extract_new_values(snapshot, self.previous_feed)
         self.previous_feed = tuple(snapshot)
         if new_values:
-            self.analyzer.add_values(new_values)
+            # New values are newest-first, so add them oldest-first.
+            self.analyzer.add_values(reversed(new_values))
             self.render()
 
     def _resize_output(self, *_):
