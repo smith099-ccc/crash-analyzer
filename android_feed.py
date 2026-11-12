@@ -5,7 +5,7 @@ from kivy.clock import Clock
 from kivy.utils import platform
 
 TRACKER_URL = "https://trackersino.com/games/stake-crash"
-_MULTIPLIER_RE = re.compile(r"(?<![\d.])(\d+(?:\\.\d+)?)\s*[xX×]")
+_MULTIPLIER_RE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*[xX×]")
 
 
 def parse_rendered_multipliers(text):
@@ -92,7 +92,7 @@ class AndroidPublicFeed:
                 for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
                     const text = node.innerText || "";
                     if (text.length > best.length) best = text;
-                    if ((text.match(/\d+(?:\\.\d+)?\s*[xX×]/g) || []).length >= 1) {
+                    if ((text.match(/\d+(?:\.\d+)?\s*[xX×]/g) || []).length >= 1) {
                         best = text;
                         break;
                     }
