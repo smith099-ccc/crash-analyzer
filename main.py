@@ -110,7 +110,7 @@ class CrashAnalyzerUI(BoxLayout):
     def clear_values(self, *_):
         self.analyzer = RollingAnalyzer()
         self.previous_feed = ()
-        self.status.text = "Cleared. Waiting for public feed data."
+        if self.feed:\n            self.feed.reset_snapshot()\n        self.status.text = "Cleared. Re-reading the current public feed…"
         self.render()
 
     def render(self):
