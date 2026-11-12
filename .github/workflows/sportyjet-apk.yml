@@ -1,0 +1,101 @@
+name: Build SportyJet Analyzer APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sportyjet/**"
+      - ".github/workflows/sportyjet-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip autoconf automake libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev libssl-dev libltdl-dev build-essential
+      - name: Install Buildozer
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install git+https://github.com/kivy/buildozer.git
+          python -m pip install legacy-cgi setuptools cython==0.29.34
+      - name: Validate app
+        working-directory: sportyjet
+        run: |
+          python -m py_compile main.py sportyjet_stats.py
+          python - <<'PY'
+          from sportyjet_stats import analyze, simulate
+          sample = [1.2, 1.5, 2.0, 3.4, 1.1, 2.8]
+          result = analyze(sample)
+          assert result["n"] == 6
+          assert result["under_2_count"] == 3
+          sim = simulate(sample, 1000, seed=7)
+          assert sim and sim["p10"] <= sim["median"] <= sim["p90"]
+          print("SportyJet analysis tests passed.")
+          PY
+      - name: Bootstrap Buildozer
+        env:
+          BUILDOZER_ALLOW_ORG_TEST_DOMAIN: "1"
+        working-directory: sportyjet
+        run: |
+          set +e
+          yes | buildozer android debug
+          BOOTSTRAP_STATUS=$?
+          set -e
+          echo "Initial Buildozer status: $BOOTSTRAP_STATUS"
+          P4A=".buildozer/android/platform/python-for-android"
+          test -d "$P4A"
+          BUILD_PY="$P4A/pythonforandroid/build.py"
+          test -f "$BUILD_PY"
+          python - "$BUILD_PY" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          replacements = (
+              ("pip install -U pip", "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
+              ("pip install --upgrade pip", "python -m ensurepip --upgrade && python -m pip install --force-reinstall pip==23.2.1"),
+          )
+          changed = False
+          for old, new in replacements:
+              if old in source:
+                  source = source.replace(old, new)
+                  changed = True
+          if not changed and "pip==23.2.1" not in source:
+              raise SystemExit("Could not locate p4a pip-upgrade command; refusing an unpatched build.")
+          path.write_text(source)
+          print("python-for-android pip bootstrap patched.")
+          PY
+          find .buildozer/android/platform -type d -path "*/build/venv" -prune -exec rm -rf {} + 2>/dev/null || true
+      - name: Build APK
+        env:
+          BUILDOZER_ALLOW_ORG_TEST_DOMAIN: "1"
+        working-directory: sportyjet
+        run: yes | buildozer android debug
+      - name: Verify APK
+        working-directory: sportyjet
+        run: |
+          test -n "$(find bin -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          ls -lh bin/*.apk
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: sportyjet-analyzer-debug-apk
+          path: sportyjet/bin/*.apk
+          if-no-files-found: error
